@@ -2150,8 +2150,7 @@ Default: 2,2,2,2,2,2,2,2,2,2
 
 Array of write frequencies for each history file series.
 If {{ hilight }}nhtfrq(1){{ closehilight }} = 0, the file will be a monthly average.
-Only the first file series may be a monthly average.  If
-{{ hilight }}nhtfrq(i){{ closehilight }} &gt; 0, frequency is specified as number of
+If {{ hilight }}nhtfrq(i){{ closehilight }} &gt; 0, frequency is specified as number of
 timesteps.  If {{ hilight }}nhtfrq(i){{ closehilight }} &lt; 0, frequency is specified
 as number of hours.
 
@@ -4421,6 +4420,12 @@ Column bfb match with cam generated IOP.
 Default: FALSE
 </entry>
 
+<entry id="scm_backfill_iop_w_init" type="logical" category="scam"
+       group="scam_nl" valid_values="">
+Backfill missing IOP values for omega/T/q/Ps from initial data file.
+Default: FALSE
+</entry>
+
 <entry id="scm_crm_mode" type="logical" category="scam"
        group="scam_nl" valid_values="">
 Column radiation mode.
@@ -4522,19 +4527,19 @@ Default: 'slt'
 </entry>
 
 <entry id="scm_iop_lhflxshflxTg" type="logical" category="scam"
-       group="scam_nl" valid_values="iop,eulc,slt,off">
+       group="scam_nl" valid_values="">
 Use the SCAM-IOP specified surface LHFLX/SHFLX/ustar/Tg instead of using internally-computed values
 Default: FALSE
 </entry>
 
 <entry id="scm_use_obs_qv" type="logical" category="scam"
-       group="scam_nl" valid_values="iop,eulc,slt,off">
+       group="scam_nl" valid_values="">
 Use the SCAM-IOP specified observed water vapor at each time step instead of forecast value
 Default: FALSE
 </entry>
 
 <entry id="scm_force_latlon" type="logical" category="scam"
-       group="scam_nl" valid_values="iop,eulc,slt,off">
+       group="scam_nl" valid_values="">
 Force scam to use the lat lon fields specified in the scam namelist not what is closest to IOP avail lat lon
 Default: FALSE
 </entry>
