@@ -18,6 +18,10 @@ use physconst,         only: rhoh2o, rga, rair
 use radconstants,      only: nswbands, nlwbands, idx_sw_diag, idx_uv_diag, idx_nir_diag
 use rad_constituents,  only: n_diag, rad_cnst_get_call_list, rad_cnst_get_info, rad_cnst_get_aer_mmr, &
                              rad_cnst_get_aer_props, rad_cnst_get_mode_props, rad_cnst_get_mode_num
+!YS 
+!rad_cnst_get_mode_num returns mode number mixing ratio, ref: src/physics/cam/rad_constituents   
+!YS
+
 use physics_types,     only: physics_state
 
 use physics_buffer, only : pbuf_get_index,physics_buffer_desc, pbuf_get_field
@@ -33,7 +37,9 @@ use cam_abortutils,    only: endrun
 use modal_aero_wateruptake, only: modal_aero_wateruptake_dr
 use modal_aero_calcsize,    only: modal_aero_calcsize_diag
 use wv_saturation, only: qsat_water
-
+!YS 
+!qsat_water is saturation vapor pressure (SVP, 饱和蒸气压) over water only
+!YS 
 implicit none
 private
 save
@@ -212,6 +218,9 @@ close(90)
 
    call addfld ('EXTINCT',    (/ 'lev' /), 'A','/m','Aerosol extinction 550 nm, day only',                   &
                 flag_xyfill=.true.)
+!YS
+!Aerosol extinction 气溶胶消光，即由于大气中气溶胶的散射和吸收，在550纳米（可见光谱中的一个波长）处的光强度降低。 
+!YS               
    call addfld ('EXTINCTUV',  (/ 'lev' /), 'A','/m','Aerosol extinction 350 nm, day only',                   &
                 flag_xyfill=.true.)
    call addfld ('EXTINCTNIR', (/ 'lev' /), 'A','/m','Aerosol extinction 1020 nm, day only',                  &
@@ -587,6 +596,9 @@ subroutine modal_aero_sw(list_idx, state, pbuf, nnite, idxnite, &
    real(r8) :: air_density(pcols,pver) ! (kg/m3)
 
    real(r8),    pointer :: specmmr(:,:)        ! species mass mixing ratio
+!YS
+!species mass mixing ratio 物种质量混合比
+!YS   
    real(r8)             :: specdens            ! species density (kg/m3)
    complex(r8), pointer :: specrefindex(:)     ! species refractive index
    character*32         :: spectype            ! species type
@@ -597,6 +609,10 @@ subroutine modal_aero_sw(list_idx, state, pbuf, nnite, idxnite, &
 
    real(r8), pointer :: dgnumdry_m(:,:,:) ! number mode dry diameter for all modes
    real(r8), pointer :: dgnumwet_m(:,:,:) ! number mode wet diameter for all modes
+!YS
+!number mode wet diameter for all modes means the diameter of aerosol particles after they have taken up water through hygroscopic growth
+!气溶胶模态的数模湿直径表示气溶胶粒子通过吸湿生长吸收水分后的直径。
+!YS   
    real(r8), pointer :: qaerwat_m(:,:,:)  ! aerosol water (g/g) for all modes
    real(r8), pointer :: wetdens_m(:,:,:)  ! 
    real(r8), pointer :: hygro_m(:,:,:)  ! 
@@ -693,7 +709,7 @@ subroutine modal_aero_sw(list_idx, state, pbuf, nnite, idxnite, &
    integer  :: nerr_dopaer = 0
    real(r8) :: volf            ! volume fraction of insoluble aerosol
    character(len=*), parameter :: subname = 'modal_aero_sw'
-
+!---------------------------------------------------------------------------
    real(r8)    :: specmmr_m(pcols)
    real(r8)    :: specmmr_m1(pcols,pver)
    real(r8)             :: specdens_m1
@@ -773,6 +789,9 @@ subroutine modal_aero_sw(list_idx, state, pbuf, nnite, idxnite, &
    real(r8) :: pabs_para(pcols)
    real(r8) :: pext_para(pcols)
    real(r8) :: sigma_m          ! geometric standard deviation of number distribution for accumulation mode
+!YS
+!geometric standard deviation 几何标准差 
+!YS   
    real(r8) :: Reff_nobc(pcols,pver)
    real(r8) :: N0_nobc(pcols,pver)
 
@@ -804,8 +823,10 @@ subroutine modal_aero_sw(list_idx, state, pbuf, nnite, idxnite, &
    ! diagnostics for visible band summed over modes
    extinct(1:ncol,:)     = 0.0_r8
    absorb(1:ncol,:)      = 0.0_r8
+!----------------------------------------------------------------------------   
    absorbBC(1:ncol,:)      = 0.0_r8
    absorbBC4(1:ncol,:)      = 0.0_r8
+!----------------------------------------------------------------------------     
    aodvis(1:ncol)        = 0.0_r8
    aodvisst(1:ncol)      = 0.0_r8
    aodabs(1:ncol)        = 0.0_r8
@@ -834,7 +855,9 @@ subroutine modal_aero_sw(list_idx, state, pbuf, nnite, idxnite, &
    aodnir(:ncol)         = 0.0_r8
    aoduvst(:ncol)        = 0.0_r8
    aodnirst(:ncol)       = 0.0_r8
+!----------------------------------------------------------------------------     
    aodabsmode1(1:ncol)        = 0.0_r8
+!----------------------------------------------------------------------------     
    call tropopause_findChemTrop(state, troplevchem)
 
    ! loop over all aerosol modes
@@ -854,15 +877,22 @@ subroutine modal_aero_sw(list_idx, state, pbuf, nnite, idxnite, &
       if (istat > 0) then
          call endrun('modal_aero_sw: allocation FAILURE: arrays for diagnostic calcs')
       end if
+!----------------------------------------------------------------------------        
   ! remove BC component (keep Dp constant)
+!----------------------------------------------------------------------------    
       call modal_aero_calcsize_diag(state, pbuf, list_idx, dgnumdry_m, hygro_m, &
                                     dryvol_m, dryrad_m, drymass_m, so4dryvol_m, naer_m)  
       call modal_aero_wateruptake_dr(state, pbuf, list_idx, dgnumdry_m, dgnumwet_m, &
                                      qaerwat_m, wetdens_m,  hygro_m, dryvol_m, dryrad_m, &
                                      drymass_m, so4dryvol_m, naer_m)
+!----------------------------------------------------------------------------                                     
   !    call pbuf_get_field(pbuf, dgnumwet_idx, dgnumwet_m)
   !    call pbuf_get_field(pbuf, qaerwat_idx,  qaerwat_m)
   ! remove BC component (keep Dp constant)
+!YS
+!'pbuf' means physics buffer
+!YS 
+!----------------------------------------------------------------------------  
    endif
 
    do m = 1, nmodes
