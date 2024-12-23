@@ -7,7 +7,7 @@ module cam_diagnostics
 use shr_kind_mod,    only: r8 => shr_kind_r8
 use camsrfexch,      only: cam_in_t, cam_out_t
 use cam_control_mod, only: moist_physics
-use physics_types,   only: physics_state, physics_tend
+use physics_types,   only: physics_state, physics_tend, physics_ptend
 use ppgrid,          only: pcols, pver, begchunk, endchunk
 use physics_buffer,  only: physics_buffer_desc, pbuf_add_field, dtype_r8
 use physics_buffer,  only: dyn_time_lvls, pbuf_get_field, pbuf_get_index, pbuf_old_tim_idx
@@ -37,6 +37,7 @@ public :: &
    diag_deallocate,          &! deallocate memory for module variables
    diag_conv_tend_ini,       &! initialize convective tendency calcs
    diag_phys_writeout,       &! output diagnostics of the dynamics
+   diag_clip_tend_writeout,  &! output diagnostics for clipping
    diag_phys_tend_writeout,  &! output physics tendencies
    diag_state_b4_phys_write, &! output state before physics execution
    diag_conv,                &! output diagnostics of convective processes
@@ -203,10 +204,15 @@ contains
     call register_vector_field('UAP','VAP')
 
     call addfld (apcnst(1), (/ 'lev' /), 'A','kg/kg',         trim(cnst_longname(1))//' (after physics)')
-    if ( dycore_is('LR') .or. dycore_is('SE') ) then
+    if ( dycore_is('LR') .or. dycore_is('SE')  .or. dycore_is('FV3') ) then
       call addfld ('TFIX',    horiz_only,  'A', 'K/s',        'T fixer (T equivalent of Energy correction)')
     end if
     call addfld ('TTEND_TOT', (/ 'lev' /), 'A', 'K/s',        'Total temperature tendency')
+   
+    ! Debugging negative water output fields
+    call addfld ('INEGCLPTEND ', (/ 'lev' /), 'A', 'kg/kg/s', 'Cloud ice tendency due to clipping neg values after microp')
+    call addfld ('LNEGCLPTEND ', (/ 'lev' /), 'A', 'kg/kg/s', 'Cloud liq tendency due to clipping neg values after microp')
+    call addfld ('VNEGCLPTEND ', (/ 'lev' /), 'A', 'kg/kg/s', 'Vapor tendency due to clipping neg values after microp')
 
     call addfld ('Z3',         (/ 'lev' /), 'A', 'm',         'Geopotential Height (above sea level)')
     call addfld ('Z1000',      horiz_only,  'A', 'm',         'Geopotential Z at 1000 mbar pressure surface')
@@ -333,7 +339,7 @@ contains
       call add_default ('UAP     '  , history_budget_histfile_num, ' ')
       call add_default ('VAP     '  , history_budget_histfile_num, ' ')  
       call add_default (apcnst(1)   , history_budget_histfile_num, ' ')
-      if ( dycore_is('LR') .or. dycore_is('SE') ) then
+      if ( dycore_is('LR') .or. dycore_is('SE') .or. dycore_is('FV3')  ) then
         call add_default ('TFIX    '    , history_budget_histfile_num, ' ')
       end if
     end if
@@ -414,7 +420,6 @@ contains
     ! Declare the history fields for which this module contains outfld calls.
 
     use cam_history,        only: addfld, add_default, horiz_only
-    use cam_history,        only: register_vector_field
     use constituent_burden, only: constituent_burden_init
     use physics_buffer,     only: pbuf_set_field
 
@@ -521,7 +526,7 @@ contains
     if (ixcldice > 0) then
       call addfld (ptendnam(ixcldice),(/ 'lev' /), 'A', 'kg/kg/s',trim(cnst_name(ixcldice))//' total physics tendency ')
     end if
-    if ( dycore_is('LR') )then
+    if ( dycore_is('LR') .or. dycore_is('FV3')  )then
       call addfld (dmetendnam(       1),(/ 'lev' /), 'A','kg/kg/s', &
            trim(cnst_name(       1))//' dme adjustment tendency (FV) ')
       if (ixcldliq > 0) then
@@ -615,7 +620,7 @@ contains
       if (ixcldice > 0) then
         call add_default (ptendnam(ixcldice), history_budget_histfile_num, ' ')
       end if
-      if ( dycore_is('LR') )then
+      if ( dycore_is('LR') .or. dycore_is('FV3')  )then
         call add_default(dmetendnam(1)       , history_budget_histfile_num, ' ')
         if (ixcldliq > 0) then
            call add_default(dmetendnam(ixcldliq), history_budget_histfile_num, ' ')
@@ -898,6 +903,7 @@ contains
     use time_manager,       only: get_nstep
     use interpolate_data,   only: vertinterp
     use constituent_burden, only: constituent_burden_comp
+    use co2_cycle,          only: c_i, co2_transport
 
     use tidal_diag,         only: tidal_diag_write
     !-----------------------------------------------------------------------
@@ -1234,7 +1240,7 @@ contains
                                   epsilo, rh2o
     use interpolate_data,   only: vertinterp
     use constituent_burden, only: constituent_burden_comp
-    use co2_cycle,          only: c_i, co2_transport, co2_readFlux_aircraft
+    use co2_cycle,          only: c_i, co2_transport
     !-----------------------------------------------------------------------
     !
     ! Arguments
@@ -1269,11 +1275,6 @@ contains
       do m = 1,4
         call outfld(trim(cnst_name(c_i(m)))//'_BOT', state%q(1,pver,c_i(m)), pcols, lchnk)
       end do
-
-      if (co2_readFlux_aircraft) then
-        call pbuf_get_field(pbuf, pbuf_get_index('ac_CO2'), ftem_ptr)
-        call outfld('TMac_CO2', sum(ftem_ptr(:ncol,:), dim=2), pcols, lchnk)
-      end if
     end if
 
     ! column burdens of all constituents except water vapor
@@ -1410,7 +1411,7 @@ contains
       call vertinterp(ncol, pcols, pver, state%pmid, 100000._r8, state%q(1,1,1), p_surf_q1)
     end if
 
-    if (hist_fld_active('THE9251000') .or.  &
+    if (hist_fld_active('THE9251000') .or. &
         hist_fld_active('Q925')) then
       call vertinterp(ncol, pcols, pver, state%pmid, 92500._r8, state%q(1,1,1), p_surf_q2)
     end if
@@ -1485,6 +1486,52 @@ contains
     end if
 
   end subroutine diag_phys_writeout
+
+!===============================================================================
+
+  subroutine diag_clip_tend_writeout(state, ptend, ncol, lchnk, ixcldliq, ixcldice, ixq, ztodt, rtdt)
+
+    !-----------------------------------------------------------------------
+    !
+    ! Arguments
+    !
+    type(physics_state), intent(in) :: state
+    type(physics_ptend), intent(in) :: ptend
+    integer  :: ncol
+    integer  :: lchnk
+    integer  :: ixcldliq
+    integer  :: ixcldice
+    integer  :: ixq
+    real(r8) :: ztodt
+    real(r8) :: rtdt
+
+    ! Local variables
+
+    ! Debugging output to look at ice tendencies due to hard clipping negative values
+    real(r8) :: preclipice(pcols,pver)
+    real(r8) :: icecliptend(pcols,pver)
+    real(r8) :: preclipliq(pcols,pver)
+    real(r8) :: liqcliptend(pcols,pver)
+    real(r8) :: preclipvap(pcols,pver)
+    real(r8) :: vapcliptend(pcols,pver)
+
+    ! Initialize to zero
+    liqcliptend(:,:) = 0._r8
+    icecliptend(:,:) = 0._r8
+    vapcliptend(:,:) = 0._r8
+
+    preclipliq(:ncol,:) = state%q(:ncol,:,ixcldliq)+(ptend%q(:ncol,:,ixcldliq)*ztodt)
+    preclipice(:ncol,:) = state%q(:ncol,:,ixcldice)+(ptend%q(:ncol,:,ixcldice)*ztodt)
+    preclipvap(:ncol,:) = state%q(:ncol,:,ixq)+(ptend%q(:ncol,:,ixq)*ztodt)
+    vapcliptend(:ncol,:) = (state%q(:ncol,:,ixq)-preclipvap(:ncol,:))*rtdt
+    icecliptend(:ncol,:) = (state%q(:ncol,:,ixcldice)-preclipice(:ncol,:))*rtdt
+    liqcliptend(:ncol,:) = (state%q(:ncol,:,ixcldliq)-preclipliq(:ncol,:))*rtdt
+
+    call outfld('INEGCLPTEND', icecliptend, pcols, lchnk   )
+    call outfld('LNEGCLPTEND', liqcliptend, pcols, lchnk   )
+    call outfld('VNEGCLPTEND', vapcliptend, pcols, lchnk   )
+
+  end subroutine diag_clip_tend_writeout
 
 !===============================================================================
 
@@ -1987,7 +2034,7 @@ contains
     ! Total physics tendency for Temperature
     ! (remove global fixer tendency from total for FV and SE dycores)
 
-    if (dycore_is('LR') .or. dycore_is('SE')) then
+    if (dycore_is('LR') .or. dycore_is('SE') .or. dycore_is('FV3') ) then
       call check_energy_get_integrals( heat_glob_out=heat_glob )
       ftem2(:ncol)  = heat_glob/cpair
       call outfld('TFIX', ftem2, pcols, lchnk   )
@@ -2067,7 +2114,7 @@ contains
 
     ! Tendency for dry mass adjustment of q (FV only)
 
-    if (dycore_is('LR')) then
+    if (dycore_is('LR') .or. dycore_is('FV3') ) then
       tmp_q     (:ncol,:pver) = (state%q(:ncol,:pver,       1) - tmp_q     (:ncol,:pver))*rtdt
       if (ixcldliq > 0) then
         tmp_cldliq(:ncol,:pver) = (state%q(:ncol,:pver,ixcldliq) - tmp_cldliq(:ncol,:pver))*rtdt

@@ -914,9 +914,9 @@ subroutine radiation_tend( &
    call get_rlat_all_p(lchnk, ncol, clat)
    call get_rlon_all_p(lchnk, ncol, clon)
    if (use_rad_uniform_angle) then
-     call zenith (calday, clat, clon, coszrs, ncol, dt_avg, uniform_angle=rad_uniform_angle)
+      call zenith (calday, clat, clon, coszrs, ncol, dt_avg, uniform_angle=rad_uniform_angle)
    else
-     call zenith (calday, clat, clon, coszrs, ncol, dt_avg)
+      call zenith (calday, clat, clon, coszrs, ncol, dt_avg)
    end if
 
    ! Gather night/day column indices.

@@ -11,8 +11,9 @@ module co2_cycle
 !
 !-------------------------------------------------------------------------------
 
-   use shr_kind_mod,   only: r8 => shr_kind_r8, cl => shr_kind_cl
-   use co2_data_flux,  only: co2_data_flux_type
+   use shr_kind_mod,    only: r8 => shr_kind_r8, cl => shr_kind_cl
+   use co2_data_flux,   only: co2_data_flux_type
+   use srf_field_check, only: active_Faoo_fco2_ocn
 
    implicit none
 
@@ -28,12 +29,10 @@ module co2_cycle
    public co2_time_interp_ocn           ! time interpolate co2 flux
    public co2_time_interp_fuel          ! time interpolate co2 flux
    public co2_cycle_set_ptend           ! set tendency from aircraft emissions
-   public co2_cycle_set_cnst_type       ! set cnst_type for co2_cycle tracers
 
    ! Public data
    public data_flux_ocn                 ! data read in for co2 flux from ocn
    public data_flux_fuel                ! data read in for co2 flux from fuel
-   public co2_readFlux_aircraft         ! true => read aircraft co2 flux from data file, namelist variable
 
    type(co2_data_flux_type) :: data_flux_ocn
    type(co2_data_flux_type) :: data_flux_fuel
@@ -44,9 +43,9 @@ module co2_cycle
 
    ! Namelist variables
    logical :: co2_flag              = .false.         ! true => turn on co2 code, namelist variable
-   logical :: co2_readFlux_ocn      = .false.         ! true => read ocn      co2 flux from data file, namelist variable
-   logical :: co2_readFlux_fuel     = .false.         ! true => read fuel     co2 flux from data file, namelist variable
-   logical :: co2_readFlux_aircraft = .false.         ! true => read aircraft co2 flux from data file, namelist variable
+   logical :: co2_readFlux_ocn      = .false.         ! true => read ocn      co2 flux from date file, namelist variable
+   logical :: co2_readFlux_fuel     = .false.         ! true => read fuel     co2 flux from date file, namelist variable
+   logical :: co2_readFlux_aircraft = .false.         ! true => read aircraft co2 flux from date file, namelist variable
    character(len=cl) :: co2flux_ocn_file  = 'unset' ! co2 flux from ocn
    character(len=cl) :: co2flux_fuel_file = 'unset' ! co2 flux from fossil fuel
 
@@ -67,9 +66,7 @@ module co2_cycle
    integer, dimension(ncnst) :: c_i                   ! global index
 
 !===============================================================================
-
 contains
-
 !===============================================================================
 
 subroutine co2_cycle_readnl(nlfile)
@@ -83,7 +80,6 @@ subroutine co2_cycle_readnl(nlfile)
    use spmd_utils,      only: masterproc
    use spmd_utils,      only: mpicom, mstrid=>masterprocid, mpi_logical, mpi_character
    use cam_logfile,     only: iulog
-   use cam_cpl_indices, only: index_x2a_Faoo_fco2_ocn
    use cam_abortutils,  only: endrun
 
    ! Arguments
@@ -91,11 +87,11 @@ subroutine co2_cycle_readnl(nlfile)
 
    ! Local variables
    integer :: unitn, ierr
+   character(len=256) :: msg
    character(len=*), parameter :: subname = 'co2_cycle_readnl'
 
    namelist /co2_cycle_nl/ co2_flag, co2_readFlux_ocn, co2_readFlux_fuel, co2_readFlux_aircraft, &
                            co2flux_ocn_file, co2flux_fuel_file
-
    !----------------------------------------------------------------------------
 
    if (masterproc) then
@@ -127,9 +123,11 @@ subroutine co2_cycle_readnl(nlfile)
    if (ierr /= 0) call endrun(subname//": FATAL: mpi_bcast: co2flux_fuel_file")
 
    ! Consistency check
-   if (co2_readFlux_ocn .and. index_x2a_Faoo_fco2_ocn /= 0) then
-      write(iulog,*)'error co2_readFlux_ocn and index_x2a_Faoo_fco2_ocn cannot both be active'
-      call endrun(subname // ':: error co2_readFlux_ocn and index_x2a_Faoo_fco2_ocn cannot both be active')
+   if (co2_readFlux_ocn .and. active_Faoo_fco2_ocn) then
+      msg = subname//': ERROR: reading ocn flux dataset is enabled, but coupler is setting'&
+            //' the ocn co2 flux.  Cannot do both.'
+      write(iulog,*) trim(msg)
+      call endrun(trim(msg))
    end if
 
 end subroutine co2_cycle_readnl
@@ -159,7 +157,7 @@ subroutine co2_register
 
    c_mw   = (/     mwco2,     mwco2,     mwco2,     mwco2 /)
    c_cp   = (/     cpair,     cpair,     cpair,     cpair /)
-   c_qmin = (/ -1.e36_r8, -1.e36_r8, -1.e36_r8, -1.e36_r8 /) ! disable qneg3
+   c_qmin = (/ 1.e-20_r8, 1.e-20_r8, 1.e-20_r8, 1.e-20_r8 /)
 
    ! register CO2 constiuents as dry tracers, set indices
 
@@ -326,10 +324,6 @@ subroutine co2_init
       call co2_data_flux_init ( co2flux_fuel_file, 'CO2_flux', data_flux_fuel )
    end if
 
-   if (co2_readFlux_aircraft) then
-      call addfld('TMac_CO2', horiz_only,'A', 'kg/m2/s', 'vertical integral of aircraft emission ac_CO2')
-   end if
-
 end subroutine co2_init
 
 !===============================================================================
@@ -427,32 +421,6 @@ subroutine co2_cycle_set_ptend(state, pbuf, ptend)
    end do
 
 end subroutine co2_cycle_set_ptend
-
-!===============================================================================
-
-subroutine co2_cycle_set_cnst_type(cnst_type_array, cnst_type_val)
-
-!-------------------------------------------------------------------------------
-! Purpose:
-! set cnst_type for co2_cycle tracers
-!-------------------------------------------------------------------------------
-
-   ! Arguments
-   character(len=*), intent(inout) :: cnst_type_array(:)
-   character(len=*), intent(in) :: cnst_type_val
-
-   ! Local variables
-   integer :: m
-
-   !----------------------------------------------------------------------------
-
-   if (.not. co2_flag) return
-
-   do m = 1, ncnst
-      cnst_type_array(c_i(m)) = cnst_type_val
-   end do
-
-end subroutine co2_cycle_set_cnst_type
 
 !===============================================================================
 

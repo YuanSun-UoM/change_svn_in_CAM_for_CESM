@@ -68,19 +68,8 @@ CONTAINS
     type(horiz_coord_t), pointer       :: lat_coord
     type(horiz_coord_t), pointer       :: lon_coord
     character(len=max_hcoordname_len)  :: gridname
+    !---------------------------------------------------------------------------
 
-    if (associated(cam_interpolate)) then
-      do i = 1, size(cam_interpolate)
-!JMD  This is strange ithr used before it is set
-      ithr = 0
-        if (associated(interpdata_set(ithr)%interpdata)) then
-          deallocate(interpdata_set(ithr)%interpdata)
-          nullify(interpdata_set(ithr)%interpdata)
-        end if
-      end do
-      deallocate(cam_interpolate)
-      nullify(cam_interpolate)
-    end if
     nullify(grid_map)
 
     ! For this dycore, interpolated output should be OK
@@ -304,11 +293,10 @@ CONTAINS
     if(decomp_type==phys_decomp) then
       fld_dyn = -999_R8
       if(local_dp_map) then
-        !$omp parallel do num_threads(horz_num_threads) private (lchnk, ncols, pgcols, icol, idmb1, idmb2, idmb3, ie, ioff,k)
+        !!$omp parallel do num_threads(horz_num_threads) private (lchnk, ncols, pgcols, icol, idmb1, idmb2, idmb3, ie, ioff,k)
         do lchnk=begchunk,endchunk
           ncols=get_ncols_p(lchnk)
           call get_gcol_all_p(lchnk,pcols,pgcols)
-          if (fv_nphys>0) ncols = fv_nphys*fv_nphys
           do icol=1,ncols
             call get_gcol_block_d(pgcols(icol),1,idmb1,idmb2,idmb3)
             ie = idmb3(1)
@@ -322,7 +310,7 @@ CONTAINS
         allocate( bbuffer(block_buf_nrecs*numlev) )!xxx Steve: this is different that dp_coupling? (no numlev in dp_coupling)
         allocate( cbuffer(chunk_buf_nrecs*numlev) )
 
-        !$omp parallel do num_threads(horz_num_threads) private (lchnk, ncols, cpter, i, k, icol)
+        !!$omp parallel do num_threads(horz_num_threads) private (lchnk, ncols, cpter, i, k, icol)
         do lchnk = begchunk,endchunk
           ncols = get_ncols_p(lchnk)
 
@@ -347,7 +335,7 @@ CONTAINS
           else
              allocate(bpter(npsq,0:pver))
           end if
-          !$omp parallel do num_threads(horz_num_threads) private (ie, bpter, k, ncols, icol)
+          !!$omp parallel do num_threads(horz_num_threads) private (ie, bpter, k, ncols, icol)
           do ie=1,nelemd
             if (fv_nphys>0) then
               call chunk_to_block_recv_pters(elem(ie)%GlobalID,fv_nphys*fv_nphys,pverp,1,bpter)
@@ -412,9 +400,9 @@ CONTAINS
     !
     ! WARNING - 1:nelemd and nets:nete
     !
-    !$OMP MASTER   !JMD
+    !!$OMP MASTER   !JMD
     dest(:,:,:,1:nelemd) = fld_tmp(1-nhalo:nsize+nhalo,1-nhalo:nsize+nhalo,:,1,1:nelemd)
-    !$OMP END MASTER
+    !!$OMP END MASTER
     deallocate(fld_tmp)
     !
     !***************************************************************************
@@ -564,11 +552,10 @@ CONTAINS
     fld_dyn = -999_R8
     if(decomp_type==phys_decomp) then
       if(local_dp_map) then
-        !$omp parallel do num_threads(horz_num_threads) private (lchnk, ncols, pgcols, icol, idmb1, idmb2, idmb3, ie, k, ioff)
+        !!$omp parallel do num_threads(horz_num_threads) private (lchnk, ncols, pgcols, icol, idmb1, idmb2, idmb3, ie, k, ioff)
         do lchnk=begchunk,endchunk
           ncols=get_ncols_p(lchnk)
           call get_gcol_all_p(lchnk,pcols,pgcols)
-          if (fv_nphys>0) ncols = fv_nphys*fv_nphys
           do icol=1,ncols
             call get_gcol_block_d(pgcols(icol),1,idmb1,idmb2,idmb3)
             ie = idmb3(1)
@@ -582,7 +569,7 @@ CONTAINS
       else
         allocate( bbuffer(2*block_buf_nrecs*numlev) )
         allocate( cbuffer(2*chunk_buf_nrecs*numlev) )
-        !$omp parallel do num_threads(horz_num_threads) private (lchnk, ncols, cpter, i, k, icol)
+        !!$omp parallel do num_threads(horz_num_threads) private (lchnk, ncols, cpter, i, k, icol)
         do lchnk = begchunk,endchunk
           ncols = get_ncols_p(lchnk)
 
@@ -607,7 +594,7 @@ CONTAINS
           else
             allocate(bpter(npsq,0:pver))
           end if
-          !$omp parallel do num_threads(horz_num_threads) private (ie, bpter, k, icol)
+          !!$omp parallel do num_threads(horz_num_threads) private (ie, bpter, k, icol)
           do ie=1,nelemd
             if (fv_nphys>0) then
               call chunk_to_block_recv_pters(elem(ie)%GlobalID,fv_nphys*fv_nphys,pverp,2,bpter)
@@ -697,9 +684,9 @@ CONTAINS
     !
     ! WARNING - 1:nelemd and nets:nete
     !
-    !$OMP MASTER   !JMD
+    !!$OMP MASTER   !JMD
     dest(:,:,:,:,1:nelemd) = fld_tmp(1-nhalo:nsize+nhalo,1-nhalo:nsize+nhalo,:,:,1:nelemd)
-    !$OMP END MASTER
+    !!$OMP END MASTER
     deallocate(fld_tmp)
     !
     !***************************************************************************

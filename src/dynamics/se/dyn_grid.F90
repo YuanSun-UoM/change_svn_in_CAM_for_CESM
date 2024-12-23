@@ -44,8 +44,7 @@ use pio,                    only: file_desc_t, pio_seterrorhandling, pio_bcast_e
                                   pio_inq_dimlen
 
 use dimensions_mod,         only: globaluniquecols, nelem, nelemd, nelemdmax, &
-                                  ne, np, npsq, fv_nphys, nlev, nc, ntrac,    &
-                                  qsize_condensate_loading
+                                  ne, np, npsq, fv_nphys, nlev, nc, ntrac
 use element_mod,            only: element_t
 use fvm_control_volume_mod, only: fvm_struct
 use hybvcoord_mod,          only: hvcoord_t
@@ -149,7 +148,8 @@ subroutine dyn_grid_init()
    use fvm_mod,             only: fvm_init2, fvm_init3, fvm_pg_init
    use dimensions_mod,      only: irecons_tracer
    use comp_gll_ctr_vol,    only: gll_grid_write
-
+   use physconst,           only: thermodynamic_active_species_num
+   
    ! Local variables
 
    type(file_desc_t), pointer  :: fh_ini
@@ -194,7 +194,7 @@ subroutine dyn_grid_init()
       end if
 
       if (fv_nphys > 0) then
-         qsize_local = qsize_condensate_loading + 3
+         qsize_local = thermodynamic_active_species_num + 3
       else
          qsize_local = pcnst + 3
       end if
@@ -242,7 +242,6 @@ subroutine dyn_grid_init()
       ! ================================================
 
       if (iam < par%nprocs) then
-!$OMP PARALLEL NUM_THREADS(horz_num_threads), DEFAULT(SHARED), PRIVATE(hybrid,nets,nete)
          hybrid = config_thread_region(par,'serial')
          call get_loop_ranges(hybrid, ibeg=nets, iend=nete)
 
@@ -250,7 +249,6 @@ subroutine dyn_grid_init()
          call fvm_init2(elem, fvm, hybrid, nets, nete)
          call fvm_pg_init(elem, fvm, hybrid, nets, nete, irecons_tracer)
          call fvm_init3(elem, fvm, hybrid, nets, nete, irecons_tracer)
-!$OMP END PARALLEL
       end if
 
    else
